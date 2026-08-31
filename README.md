@@ -44,8 +44,30 @@ forge test -vv
 
 Dependencies are managed by soldeer (no git submodules). Solidity 0.8.26, Cancun EVM, via-IR.
 
+## Deploying
+
+1. Copy `.env.example` to `.env` and fill in `PRIVATE_KEY` and `ROBINHOOD_RPC` (the official RPC is listed at docs.robinhood.com/chain).
+2. Set `USDG`, `STOCK_TOKEN` and `STOCK_FEED` to the live addresses. On a local Anvil chain or the testnet they can be left blank to deploy mocks.
+3. Run:
+
+```bash
+source .env
+forge script script/Deploy.s.sol --rpc-url robinhood --broadcast --verify
+```
+
+The script writes `deployments/<chainId>.json` with every address, opens the launch market and sets the documented launch parameters (Tier A: 10 bps half-spread, 75 bps band, 50,000 USDG clip; x1.5 extended and x3 closed session multipliers; 2 bps fees and a 10% spread share). Set `GOV` to hand ownership to the governance multisig and `FINISH_BOOTSTRAP=true` to lock parameters to the timelock. On a local chain the deployer attests itself for every role so the flows can be exercised immediately.
+
 ## Governance model
 
 - `ParamController` starts in bootstrap mode: the owner can call setters directly. `finishBootstrap()` is irreversible and routes every change through `schedule` / `execute` with the configured delay.
 - The guardian can only pause swaps. Nothing can pause deposits, withdrawals or RFQ cancellation.
 - `SwapRouter`, `AnchorVault`, `VaultFactory` and `RfqSettlement` have no proxy and no admin. Improvements ship as new deployments that LPs migrate to by choice.
+
+## Key invariants
+
+- No fill clears outside the tier's oracle band, from a vault or a maker, in any regime, under any parameter set the controller accepts.
+- Vault withdrawal is pro-rata in kind and works in every state: halted, guardian-paused, market retired, attestation expired. Nothing can trap LP funds.
+- Value per share never decreases from a swap; mint and burn rounding always favours the vault.
+- A fill may not leave a vault outside its inventory band, and the preview and the fill agree exactly, so the harmful side goes one-sided instead of absorbing unbounded inventory.
+- Every market is priced with the feed configured for the exact token in the vault, never a wrapper or a derived rate.
+- Quotes are itemised on-chain: the fill event carries mid, spread, skew and fee, matching what was quoted.
