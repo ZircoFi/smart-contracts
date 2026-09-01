@@ -27,6 +27,33 @@ test/                         Foundry suite: vault accounting, swap pricing, reg
 deployments/                  addresses written by the deploy script, one JSON file per chain ID
 ```
 
+## Deployments
+
+### Robinhood Chain testnet (chain ID 46630)
+
+Deployed 1 September 2026 from `0x11a66772a0BD9F1a798704448f36D697718F6f61`, which is also the bootstrap owner, guardian and attestation issuer on testnet. All twelve contracts are verified on [Blockscout](https://explorer.testnet.chain.robinhood.com). External dependencies are mocks: the deploy script stands in its own USDG, NVDAx stock token and Chainlink aggregator (NVDAx at 176.40 USDG). The full list is in `deployments/46630.json`.
+
+| Contract | Address |
+| --- | --- |
+| SwapRouter | [`0x0E0036d5fe155038E499cb6d9e92f1E8cC61b4cC`](https://explorer.testnet.chain.robinhood.com/address/0x0E0036d5fe155038E499cb6d9e92f1E8cC61b4cC) |
+| RfqSettlement | [`0x5F9Bea6190dDbe1cC6FDB92Cb31b97F5395872E9`](https://explorer.testnet.chain.robinhood.com/address/0x5F9Bea6190dDbe1cC6FDB92Cb31b97F5395872E9) |
+| VaultFactory | [`0xeA9b5e56387D97ac721a98D6E90C8dA0C4e445B9`](https://explorer.testnet.chain.robinhood.com/address/0xeA9b5e56387D97ac721a98D6E90C8dA0C4e445B9) |
+| AnchorVault (NVDAx / USDG, `zvNVDAx`) | [`0xAd0DC93C44B5C6419Dc762008F150A36e23172a6`](https://explorer.testnet.chain.robinhood.com/address/0xAd0DC93C44B5C6419Dc762008F150A36e23172a6) |
+| OracleRouter | [`0xd3eEf50777D4e5Dd43Cd32bE386143EEd68f6bea`](https://explorer.testnet.chain.robinhood.com/address/0xd3eEf50777D4e5Dd43Cd32bE386143EEd68f6bea) |
+| EligibilityRegistry | [`0x42c8337789F26eDdeaAAFF393285fEa074b1beEa`](https://explorer.testnet.chain.robinhood.com/address/0x42c8337789F26eDdeaAAFF393285fEa074b1beEa) |
+| NativeAttestationAdapter | [`0xaA05D002BA926FbE7f12518568C7f660c9AaE997`](https://explorer.testnet.chain.robinhood.com/address/0xaA05D002BA926FbE7f12518568C7f660c9AaE997) |
+| ParamController | [`0x547043759582B63138681f58CCEbe88C20e695e8`](https://explorer.testnet.chain.robinhood.com/address/0x547043759582B63138681f58CCEbe88C20e695e8) |
+| FeeCollector | [`0xb97569c3FC7E79cf3D5117B0356a2D0444F26ACB`](https://explorer.testnet.chain.robinhood.com/address/0xb97569c3FC7E79cf3D5117B0356a2D0444F26ACB) |
+| USDG (mock) | [`0x3E3e5BBeeacc1e50ACEBae3b4385f82Fc1d81cDC`](https://explorer.testnet.chain.robinhood.com/address/0x3E3e5BBeeacc1e50ACEBae3b4385f82Fc1d81cDC) |
+| NVDAx stock token (mock) | [`0x2418E25422395DB7122cf27Ed26AF85E4338A8B2`](https://explorer.testnet.chain.robinhood.com/address/0x2418E25422395DB7122cf27Ed26AF85E4338A8B2) |
+| NVDAx / USD aggregator (mock) | [`0x7Cc6aF674774cba6CAc3af8B9D523D388d06069a`](https://explorer.testnet.chain.robinhood.com/address/0x7Cc6aF674774cba6CAc3af8B9D523D388d06069a) |
+
+The testnet deployment runs with the documented launch parameters, `TIMELOCK_DELAY=3600` and `FINISH_BOOTSTRAP=false`, so the deployer can still call the `ParamController` setters directly.
+
+### Robinhood Chain mainnet (chain ID 4663)
+
+Not yet deployed. Mainnet requires the live `USDG`, `STOCK_TOKEN`, `STOCK_FEED` and `SEQUENCER_FEED` addresses; the script refuses to deploy mocks on chain ID 4663.
+
 ## How a swap settles
 
 1. The trader calls `SwapRouter.swapExactIn` with the pair, an exact input, a minimum output and a deadline, optionally attaching a signed maker quote.
@@ -71,3 +98,13 @@ The script writes `deployments/<chainId>.json` with every address, opens the lau
 - A fill may not leave a vault outside its inventory band, and the preview and the fill agree exactly, so the harmful side goes one-sided instead of absorbing unbounded inventory.
 - Every market is priced with the feed configured for the exact token in the vault, never a wrapper or a derived rate.
 - Quotes are itemised on-chain: the fill event carries mid, spread, skew and fee, matching what was quoted.
+
+## Notes for integrators
+
+- Approvals run against the router (traders) and `RfqSettlement` (makers); Permit2 and ERC-4337 batching sit above these contracts rather than inside them.
+- Deposits price the incoming assets at the guarded mid, so they revert while a market is halted; withdrawals read no oracle at all and never revert on market state.
+- `AnchorVault.quoteSwap` is the exact preview: it reverts while the market is halted, and the router treats that as "no vault quote" so RFQ can still carry the market.
+
+## Security
+
+The security programme (testing, audits, bounty and disclosure) is described in `docs/architecture/security.md`. Report vulnerabilities to security@zircofi.com rather than in public issues.
