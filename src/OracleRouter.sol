@@ -74,6 +74,7 @@ contract OracleRouter is IOracleRouter {
     event Checkpointed(address indexed token, uint256 price);
 
     error NotGovernance();
+    error InvalidFeedConfig();
     error StreamNotConfigured(address token);
     error StreamDivergence(uint256 feedPrice, uint256 streamPrice);
 
@@ -109,6 +110,12 @@ contract OracleRouter is IOracleRouter {
         address multiplierSource,
         address streamAdapter
     ) external onlyGovernance {
+        // Refuse configurations that silently disable their own guard: a zero staleness bound marks
+        // every round stale and halts the market for good, a move cap with a zero window can only ever
+        // compare prints inside one block, and a zero divergence tolerance rejects every stream report.
+        if (stalenessRegular == 0 || stalenessExtended == 0 || stalenessClosed == 0) revert InvalidFeedConfig();
+        if (moveCapBps != 0 && moveCapWindow == 0) revert InvalidFeedConfig();
+        if (streamAdapter != address(0) && streamDivergenceBps == 0) revert InvalidFeedConfig();
         uint8 fd = feed.decimals();
         uint8 qd = IERC20Metadata(quoteToken).decimals();
         uint8 td = IERC20Metadata(token).decimals();
@@ -297,6 +304,9 @@ contract OracleRouter is IOracleRouter {
         if (address(sequencerFeed) == address(0)) return false;
         (, int256 answer, uint256 startedAt,,) = sequencerFeed.latestRoundData();
         if (answer != 0) return true; // sequencer down: treat as grace so nothing trades
+        // A startedAt of zero means the round is not initialized yet; without this check the
+        // grace-period arithmetic would treat "no data" as "up since the epoch" and let trading resume.
+        if (startedAt == 0) return true;
         uint256 grace = params.riskParams().sequencerGrace;
         return block.timestamp - startedAt < grace;
     }

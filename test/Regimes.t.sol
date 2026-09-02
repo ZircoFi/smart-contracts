@@ -3,7 +3,9 @@ pragma solidity 0.8.26;
 
 import {BaseTest} from "./Base.t.sol";
 import {AnchorVault} from "../src/AnchorVault.sol";
+import {OracleRouter} from "../src/OracleRouter.sol";
 import {SwapRouter} from "../src/SwapRouter.sol";
+import {AggregatorV3Interface} from "../src/interfaces/IExternal.sol";
 import {Types} from "../src/libraries/Types.sol";
 
 /// @notice Sessions and halts: spreads widen and clips shrink when the underlying market is closed, and
@@ -89,6 +91,73 @@ contract RegimesTest is BaseTest {
         nvdaFeed.set(int256(NVDA_PRICE_8));
         (uint256 out,) = nvdaVault.quoteSwap(true, 1_000e6);
         assertGt(out, 0);
+    }
+
+    function test_uninitializedSequencerRoundHaltsTrading() public {
+        // Chainlink reports startedAt = 0 while the uptime round is not initialized. That must read as
+        // an outage, not as "up since the epoch", or the grace arithmetic would wave trading through.
+        sequencer.setWithTimestamps(0, 0, block.timestamp);
+        vm.expectRevert(AnchorVault.MarketHalted.selector);
+        nvdaVault.quoteSwap(true, 1_000e6);
+    }
+
+    function test_feedConfigRefusesSelfDisablingGuards() public {
+        // A zero staleness bound would mark every round stale and halt the market permanently.
+        vm.prank(gov);
+        vm.expectRevert(OracleRouter.InvalidFeedConfig.selector);
+        oracle.configureFeed(
+            address(nvda),
+            address(usdg),
+            AggregatorV3Interface(address(nvdaFeed)),
+            0,
+            2 hours,
+            4 days,
+            2500,
+            1 hours,
+            200,
+            address(nvda),
+            address(nvda),
+            address(nvda),
+            address(0)
+        );
+
+        // A move cap with a zero window could only ever compare prints inside a single block.
+        vm.prank(gov);
+        vm.expectRevert(OracleRouter.InvalidFeedConfig.selector);
+        oracle.configureFeed(
+            address(nvda),
+            address(usdg),
+            AggregatorV3Interface(address(nvdaFeed)),
+            1 hours,
+            2 hours,
+            4 days,
+            2500,
+            0,
+            200,
+            address(nvda),
+            address(nvda),
+            address(nvda),
+            address(0)
+        );
+
+        // A stream adapter with zero divergence tolerance would reject every report it verifies.
+        vm.prank(gov);
+        vm.expectRevert(OracleRouter.InvalidFeedConfig.selector);
+        oracle.configureFeed(
+            address(nvda),
+            address(usdg),
+            AggregatorV3Interface(address(nvdaFeed)),
+            1 hours,
+            2 hours,
+            4 days,
+            2500,
+            1 hours,
+            0,
+            address(nvda),
+            address(nvda),
+            address(nvda),
+            address(0xDEAD)
+        );
     }
 
     function test_multiplierReportedNotDoubleApplied() public view {
