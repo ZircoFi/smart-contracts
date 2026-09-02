@@ -156,8 +156,9 @@ contract AnchorVault is ERC20, ReentrancyGuard {
     // Trading side (router only)
     // ---------------------------------------------------------------------
 
-    /// @notice Preview a swap against current state. Reverts while the market is halted, which the router
-    ///         treats as "no vault quote" rather than an error.
+    /// @notice Preview a swap against current state. Reverts while the market is halted or when the fill
+    ///         would breach a cap, which the router treats as "no vault quote" rather than an error, so
+    ///         RFQ can still carry the trade.
     function quoteSwap(bool buyToken, uint256 amountIn)
         external
         view
@@ -173,11 +174,7 @@ contract AnchorVault is ERC20, ReentrancyGuard {
         // `refresh` checkpoints the move cap; a print past the cap pauses the market instead of filling.
         IOracleRouter.Quote memory q = oracle.refresh(address(token));
         SwapQuote memory s = _price(q, buyToken, amountIn);
-
-        uint256 day = block.timestamp / 1 days;
-        uint256 newVolume = dailyVolume[day] + s.notional;
-        if (newVolume > params.marketConfig(address(token)).dailyVolumeCap) revert DailyCapExceeded();
-        dailyVolume[day] = newVolume;
+        dailyVolume[block.timestamp / 1 days] += s.notional;
 
         if (buyToken) {
             quoteToken.safeTransferFrom(msg.sender, address(this), amountIn);
@@ -225,8 +222,8 @@ contract AnchorVault is ERC20, ReentrancyGuard {
     // ---------------------------------------------------------------------
 
     /// @dev The whole pricing formula in one place: regime-adjusted base spread, signed inventory skew,
-    ///      itemised fee, clip and band checks. Everything it reads is public state, so any quote is
-    ///      reproducible off-chain from the same inputs.
+    ///      itemised fee, clip, band and daily-cap checks. Everything it reads is public state, so any
+    ///      quote is reproducible off-chain from the same inputs.
     function _price(IOracleRouter.Quote memory q, bool buyToken, uint256 amountIn)
         internal
         view
@@ -288,6 +285,7 @@ contract AnchorVault is ERC20, ReentrancyGuard {
 
         uint256 clip = uint256(tier.maxClip) * clipMul / Types.BPS;
         if (s.notional > clip) revert ClipExceeded(s.notional, clip);
+        if (dailyVolume[block.timestamp / 1 days] + s.notional > mkt.dailyVolumeCap) revert DailyCapExceeded();
 
         // A fill may not leave the vault outside its inventory band. Beyond the edge the vault goes
         // one-sided: the harmful direction stops quoting here while the rebalancing one keeps working.

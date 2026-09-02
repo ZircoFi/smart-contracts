@@ -96,8 +96,13 @@ contract SwapTest is BaseTest {
             IParamController.MarketConfig({tier: 1, dailyVolumeCap: 30_000e6, tvlCap: 5_000_000e6, enabled: true})
         );
         _swap(address(usdg), address(nvda), 20_000e6);
-        vm.prank(trader);
+
+        // The cap is enforced at quote time, so previews and fills agree and the router treats a
+        // capped-out vault as "no vault quote" rather than reverting mid-fill.
         vm.expectRevert(AnchorVault.DailyCapExceeded.selector);
+        nvdaVault.quoteSwap(true, 20_000e6);
+        vm.prank(trader);
+        vm.expectRevert(SwapRouter.NoLiquidity.selector);
         router.swapExactIn(_params(address(usdg), address(nvda), 20_000e6, 0));
 
         // A new UTC day starts a fresh cap. Refresh the feed so the price is not stale.
