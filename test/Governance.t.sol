@@ -52,6 +52,29 @@ contract GovernanceTest is BaseTest {
         vm.prank(gov);
         vm.expectRevert(ParamController.OperationNotFound.selector);
         params.execute(calls, bytes32("salt"));
+
+        // Cancelling twice is refused; a cancelled operation is as good as gone.
+        vm.prank(gov);
+        vm.expectRevert(ParamController.OperationNotFound.selector);
+        params.cancel(id);
+    }
+
+    function test_cancelledOperationCanBeRescheduled() public {
+        vm.prank(gov);
+        params.finishBootstrap();
+        bytes[] memory calls = _feeCall(5);
+        vm.prank(gov);
+        bytes32 id = params.schedule(calls, bytes32("salt"), bytes32(0));
+        vm.prank(gov);
+        params.cancel(id);
+
+        // The same batch under the same salt gets a fresh timelock rather than a burned id.
+        vm.prank(gov);
+        params.schedule(calls, bytes32("salt"), bytes32(0));
+        vm.warp(block.timestamp + 1 days);
+        vm.prank(gov);
+        params.execute(calls, bytes32("salt"));
+        assertEq(params.feeParams().swapFeeBps, 5);
     }
 
     function test_guardianCanPauseAndNothingElse() public {

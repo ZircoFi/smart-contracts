@@ -115,7 +115,9 @@ contract ParamController is IParamController {
     /// @notice Schedule a batch of setter calls. `rationale` is the hash of the published rationale.
     function schedule(bytes[] calldata calls, bytes32 salt, bytes32 rationale) external onlyOwner returns (bytes32 id) {
         id = operationId(calls, salt);
-        if (operations[id].eta != 0) revert OperationExists();
+        // A cancelled batch may be scheduled again under the same salt; only a pending or executed
+        // operation holds its id.
+        if (operations[id].eta != 0 && !operations[id].cancelled) revert OperationExists();
         uint64 eta = uint64(block.timestamp + delay);
         operations[id] = Operation({eta: eta, executed: false, cancelled: false, rationale: rationale});
         emit OperationScheduled(id, eta, rationale, calls);
@@ -137,7 +139,7 @@ contract ParamController is IParamController {
 
     function cancel(bytes32 id) external onlyOwner {
         Operation storage op = operations[id];
-        if (op.eta == 0 || op.executed) revert OperationNotFound();
+        if (op.eta == 0 || op.executed || op.cancelled) revert OperationNotFound();
         op.cancelled = true;
         emit OperationCancelled(id);
     }
