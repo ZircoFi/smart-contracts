@@ -2,10 +2,12 @@
 pragma solidity 0.8.26;
 
 import {BaseTest} from "./Base.t.sol";
+import {Roles} from "../src/libraries/Types.sol";
 import {ParamController} from "../src/ParamController.sol";
 import {IParamController} from "../src/interfaces/IParamController.sol";
 import {VaultFactory} from "../src/VaultFactory.sol";
 import {IOracleRouter} from "../src/interfaces/IOracleRouter.sol";
+import {NativeAttestationAdapter} from "../src/adapters/NativeAttestationAdapter.sol";
 import {MockStockToken} from "../src/mocks/Mocks.sol";
 
 /// @notice The change-control surface: bootstrap locks to the timelock, the guardian can only pause,
@@ -179,6 +181,18 @@ contract GovernanceTest is BaseTest {
         vm.prank(gov);
         vm.expectRevert(abi.encodeWithSelector(IOracleRouter.FeedNotConfigured.selector, address(fresh)));
         factory.createMarket(address(fresh));
+    }
+
+    function test_revokeRequiresAnAttestation() public {
+        // An issuer typo must fail loudly, not emit a zero-uid revocation of nothing.
+        vm.prank(issuer);
+        vm.expectRevert(NativeAttestationAdapter.NotAttested.selector);
+        attestations.revoke(outsider, Roles.TRADER);
+
+        // A real record still revokes.
+        vm.prank(issuer);
+        attestations.revoke(trader, Roles.TRADER);
+        assertFalse(eligibility.isEligible(trader, Roles.TRADER));
     }
 
     function test_ownershipHandoverIsTwoStep() public {

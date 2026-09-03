@@ -38,6 +38,7 @@ contract NativeAttestationAdapter is IEligibilityAdapter {
 
     error NotIssuer();
     error BadExpiry();
+    error NotAttested();
 
     modifier onlyIssuer() {
         if (!params.attestationIssuer(msg.sender)) revert NotIssuer();
@@ -71,6 +72,9 @@ contract NativeAttestationAdapter is IEligibilityAdapter {
     /// @notice Revoke immediately. Any whitelisted issuer may revoke, so a compromised issuer can be overridden.
     function revoke(address account, bytes32 role) external onlyIssuer {
         Attestation storage a = _attestations[account][role];
+        // Revoking a record that was never issued would write a ghost entry and emit a zero uid,
+        // polluting the audit trail; an issuer typo should fail loudly instead.
+        if (a.uid == bytes32(0)) revert NotAttested();
         a.revoked = true;
         emit Revoked(account, role, a.uid, msg.sender);
     }
