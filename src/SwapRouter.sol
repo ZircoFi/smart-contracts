@@ -56,6 +56,7 @@ contract SwapRouter is ReentrancyGuard {
     error Slippage(uint256 amountOut, uint256 minAmountOut);
     error QuoteMismatch();
     error QuoteNotApplicable();
+    error ZeroAddress();
 
     constructor(
         IParamController params_,
@@ -63,6 +64,10 @@ contract SwapRouter is ReentrancyGuard {
         VaultFactory factory_,
         RfqSettlement rfq_
     ) {
+        // The factory is exercised right below by quoteToken(); the rest would only fail at first use.
+        if (address(params_) == address(0) || address(eligibility_) == address(0) || address(rfq_) == address(0)) {
+            revert ZeroAddress();
+        }
         params = params_;
         eligibility = eligibility_;
         factory = factory_;
@@ -124,11 +129,18 @@ contract SwapRouter is ReentrancyGuard {
             if (p.quote.tokenIn != p.tokenIn || p.quote.tokenOut != p.tokenOut || p.quote.amountIn != p.amountIn) {
                 revert QuoteMismatch();
             }
-            // The RFQ fee comes off the quote-token leg: on a buy the maker receives it out of the input,
-            // on a sell it is deducted from the trader's output. Compare what the trader actually receives.
-            rfqNet = buyToken
-                ? p.quote.amountOut
-                : p.quote.amountOut - p.quote.amountOut * params.feeParams().rfqFeeBps / Types.BPS;
+            // A candidate that expired in flight or was cancelled by its maker is a normal race, not a
+            // client error: price it as absent so the vault can still carry the fill. A malformed or
+            // badly signed candidate stays a loud revert in settlement.
+            bool usable = block.timestamp <= p.quote.expiry && !rfq.nonceUsed(p.quote.maker, p.quote.nonce);
+            if (usable) {
+                // The RFQ fee comes off the quote-token leg: on a buy the maker receives it out of the
+                // input, on a sell it is deducted from the trader's output. Compare what the trader
+                // actually receives.
+                rfqNet = buyToken
+                    ? p.quote.amountOut
+                    : p.quote.amountOut - p.quote.amountOut * params.feeParams().rfqFeeBps / Types.BPS;
+            }
         }
 
         if (rfqNet > vaultOut) {

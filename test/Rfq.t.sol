@@ -72,15 +72,21 @@ contract RfqTest is BaseTest {
 
         _swapWithQuote(q, sig, amountIn);
 
-        SwapRouter.SwapParams memory p = _params(q.tokenIn, q.tokenOut, amountIn, 0);
-        p.quote = q;
-        p.quoteSig = sig;
-        vm.prank(trader);
+        // A consumed nonce reads like a cancelled one: the replay is priced as absent and the vault
+        // fills, while the maker is never touched a second time.
+        uint256 makerNvdaBefore = nvda.balanceOf(maker);
+        (uint256 vaultOut2,) = nvdaVault.quoteSwap(true, amountIn);
+        uint256 out = _swapWithQuote(q, sig, amountIn);
+        assertEq(out, vaultOut2);
+        assertEq(nvda.balanceOf(maker), makerNvdaBefore);
+
+        // Settlement itself still refuses the replay, as defence in depth.
+        vm.prank(address(router));
         vm.expectRevert(RfqSettlement.NonceAlreadyUsed.selector);
-        router.swapExactIn(p);
+        rfq.settle(q, sig, trader, trader);
     }
 
-    function test_makerCancelsByNonce() public {
+    function test_cancelledQuoteFallsBackToVault() public {
         uint256 amountIn = 10_000e6;
         (uint256 vaultOut,) = nvdaVault.quoteSwap(true, amountIn);
         Types.MakerQuote memory q = _makerQuote(address(usdg), address(nvda), amountIn, vaultOut * 2, 9);
@@ -91,26 +97,33 @@ contract RfqTest is BaseTest {
         vm.prank(maker);
         rfq.cancel(nonces);
 
-        SwapRouter.SwapParams memory p = _params(q.tokenIn, q.tokenOut, amountIn, 0);
-        p.quote = q;
-        p.quoteSig = sig;
-        vm.prank(trader);
+        // A cancelled candidate is a race, not an error: the router prices it as absent.
+        uint256 makerNvdaBefore = nvda.balanceOf(maker);
+        uint256 out = _swapWithQuote(q, sig, amountIn);
+        assertEq(out, vaultOut);
+        assertEq(nvda.balanceOf(maker), makerNvdaBefore);
+
+        // Settlement itself still refuses the nonce, as defence in depth.
+        vm.prank(address(router));
         vm.expectRevert(RfqSettlement.NonceAlreadyUsed.selector);
-        router.swapExactIn(p);
+        rfq.settle(q, sig, trader, trader);
     }
 
-    function test_expiredQuoteRejected() public {
+    function test_expiredQuoteFallsBackToVault() public {
         uint256 amountIn = 10_000e6;
         (uint256 vaultOut,) = nvdaVault.quoteSwap(true, amountIn);
         Types.MakerQuote memory q = _makerQuote(address(usdg), address(nvda), amountIn, vaultOut * 2, 3);
         q.expiry = uint40(block.timestamp - 1);
+        bytes memory sig = _sign(q);
 
-        SwapRouter.SwapParams memory p = _params(q.tokenIn, q.tokenOut, amountIn, 0);
-        p.quote = q;
-        p.quoteSig = _sign(q);
-        vm.prank(trader);
+        // A quote that expired in flight is priced as absent and the vault carries the fill.
+        uint256 out = _swapWithQuote(q, sig, amountIn);
+        assertEq(out, vaultOut);
+
+        // Settlement itself still refuses the expiry, as defence in depth.
+        vm.prank(address(router));
         vm.expectRevert(RfqSettlement.QuoteExpired.selector);
-        router.swapExactIn(p);
+        rfq.settle(q, sig, trader, trader);
     }
 
     function test_badSignatureRejected() public {
