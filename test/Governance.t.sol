@@ -4,6 +4,7 @@ pragma solidity 0.8.26;
 import {BaseTest} from "./Base.t.sol";
 import {ParamController} from "../src/ParamController.sol";
 import {IParamController} from "../src/interfaces/IParamController.sol";
+import {VaultFactory} from "../src/VaultFactory.sol";
 
 /// @notice The change-control surface: bootstrap locks to the timelock, the guardian can only pause,
 ///         and parameter validation refuses configurations the pricing formula cannot honour.
@@ -143,6 +144,20 @@ contract GovernanceTest is BaseTest {
         params.setMarketConfig(
             address(0xBEEF), IParamController.MarketConfig({tier: 9, dailyVolumeCap: 1e6, tvlCap: 1e6, enabled: true})
         );
+    }
+
+    function test_deploymentRefusesZeroAddresses() public {
+        // A zero owner is a controller nobody can ever govern.
+        vm.expectRevert(ParamController.ZeroAddress.selector);
+        new ParamController(address(0), guardian, 1 days);
+
+        vm.expectRevert(VaultFactory.ZeroAddress.selector);
+        new VaultFactory(params, eligibility, oracle, address(0), address(usdg));
+
+        // Router wiring is one-shot, so a zero router would brick the factory for good.
+        vm.prank(gov);
+        vm.expectRevert(VaultFactory.ZeroAddress.selector);
+        factory.setRouter(address(0));
     }
 
     function test_ownershipHandoverIsTwoStep() public {

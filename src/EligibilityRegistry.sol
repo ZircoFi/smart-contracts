@@ -12,8 +12,10 @@ contract EligibilityRegistry is IEligibilityRegistry {
     IParamController public immutable params;
 
     error AdapterNotSet();
+    error ZeroAddress();
 
     constructor(IParamController params_) {
+        if (address(params_) == address(0)) revert ZeroAddress();
         params = params_;
     }
 

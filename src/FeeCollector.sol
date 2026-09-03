@@ -16,8 +16,10 @@ contract FeeCollector {
     event Withdrawn(address indexed token, address indexed to, uint256 amount);
 
     error NotGovernance();
+    error ZeroAddress();
 
     constructor(IParamController params_) {
+        if (address(params_) == address(0)) revert ZeroAddress();
         params = params_;
     }
 

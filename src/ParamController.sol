@@ -75,6 +75,7 @@ contract ParamController is IParamController {
     error InvalidBps();
     error InvalidTier();
     error DelayTooShort();
+    error ZeroAddress();
 
     // ---------------------------------------------------------------------
     // Modifiers
@@ -96,6 +97,8 @@ contract ParamController is IParamController {
     }
 
     constructor(address owner_, address guardian_, uint256 delay_) {
+        // A zero guardian just means no guardian; a zero owner is a controller nobody can ever govern.
+        if (owner_ == address(0)) revert ZeroAddress();
         owner = owner_;
         guardian = guardian_;
         delay = delay_;

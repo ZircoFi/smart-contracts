@@ -31,6 +31,7 @@ contract VaultFactory {
     error RouterAlreadySet();
     error RouterNotSet();
     error MarketExists();
+    error ZeroAddress();
 
     modifier onlyGovernance() {
         if (msg.sender != params.owner()) revert NotGovernance();
@@ -44,6 +45,10 @@ contract VaultFactory {
         address feeCollector_,
         address quoteToken_
     ) {
+        if (
+            address(params_) == address(0) || address(eligibility_) == address(0) || address(oracle_) == address(0)
+                || feeCollector_ == address(0) || quoteToken_ == address(0)
+        ) revert ZeroAddress();
         params = params_;
         eligibility = eligibility_;
         oracle = oracle_;
@@ -53,6 +58,8 @@ contract VaultFactory {
 
     /// @notice One-shot wiring of the router. Irreversible: replacing the router means a new deployment.
     function setRouter(address router_) external onlyGovernance {
+        // Wiring is one-shot, so a zero router would brick the factory for good.
+        if (router_ == address(0)) revert ZeroAddress();
         if (router != address(0)) revert RouterAlreadySet();
         router = router_;
         emit RouterSet(router_);

@@ -57,6 +57,7 @@ contract RfqSettlement is EIP712 {
     error MarketHalted();
     error BandExceeded(uint256 implied, uint256 mid);
     error ZeroAmount();
+    error ZeroAddress();
 
     modifier onlyRouter() {
         if (msg.sender != factory.router()) revert NotRouter();
@@ -70,6 +71,10 @@ contract RfqSettlement is EIP712 {
         VaultFactory factory_,
         address feeCollector_
     ) EIP712("ZircoFi", "1") {
+        if (
+            address(params_) == address(0) || address(eligibility_) == address(0) || address(oracle_) == address(0)
+                || feeCollector_ == address(0)
+        ) revert ZeroAddress();
         params = params_;
         eligibility = eligibility_;
         oracle = oracle_;
