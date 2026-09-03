@@ -5,6 +5,8 @@ import {BaseTest} from "./Base.t.sol";
 import {ParamController} from "../src/ParamController.sol";
 import {IParamController} from "../src/interfaces/IParamController.sol";
 import {VaultFactory} from "../src/VaultFactory.sol";
+import {IOracleRouter} from "../src/interfaces/IOracleRouter.sol";
+import {MockStockToken} from "../src/mocks/Mocks.sol";
 
 /// @notice The change-control surface: bootstrap locks to the timelock, the guardian can only pause,
 ///         and parameter validation refuses configurations the pricing formula cannot honour.
@@ -158,6 +160,25 @@ contract GovernanceTest is BaseTest {
         vm.prank(gov);
         vm.expectRevert(VaultFactory.ZeroAddress.selector);
         factory.setRouter(address(0));
+    }
+
+    function test_marketOpensOnlyOnceFullyWired() public {
+        MockStockToken fresh = new MockStockToken("Tesla Stock Token", "TSLAx");
+
+        // No market parameters yet: refused.
+        vm.prank(gov);
+        vm.expectRevert(VaultFactory.MarketNotConfigured.selector);
+        factory.createMarket(address(fresh));
+
+        // Parameters set but no oracle feed: still refused.
+        vm.prank(gov);
+        params.setMarketConfig(
+            address(fresh),
+            IParamController.MarketConfig({tier: 1, dailyVolumeCap: 1_000e6, tvlCap: 1_000e6, enabled: true})
+        );
+        vm.prank(gov);
+        vm.expectRevert(abi.encodeWithSelector(IOracleRouter.FeedNotConfigured.selector, address(fresh)));
+        factory.createMarket(address(fresh));
     }
 
     function test_ownershipHandoverIsTwoStep() public {

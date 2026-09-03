@@ -31,6 +31,7 @@ contract VaultFactory {
     error RouterAlreadySet();
     error RouterNotSet();
     error MarketExists();
+    error MarketNotConfigured();
     error ZeroAddress();
 
     modifier onlyGovernance() {
@@ -68,6 +69,10 @@ contract VaultFactory {
     function createMarket(address token) external onlyGovernance returns (address vault) {
         if (router == address(0)) revert RouterNotSet();
         if (vaultOf[token] != address(0)) revert MarketExists();
+        // A vault without market parameters or an oracle feed deploys fine and then refuses every
+        // deposit and fill; require the wiring up front so a half-opened market cannot exist.
+        if (!params.marketConfig(token).enabled) revert MarketNotConfigured();
+        oracle.tokenDecimals(token); // reverts FeedNotConfigured until governance configures the feed
         string memory sym = IERC20Metadata(token).symbol();
         vault = address(
             new AnchorVault(
