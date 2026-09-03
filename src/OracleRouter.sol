@@ -75,6 +75,7 @@ contract OracleRouter is IOracleRouter {
 
     error NotGovernance();
     error InvalidFeedConfig();
+    error MarketHalted(address token);
     error StreamNotConfigured(address token);
     error StreamDivergence(uint256 feedPrice, uint256 streamPrice);
 
@@ -209,11 +210,14 @@ contract OracleRouter is IOracleRouter {
         FeedConfig storage c = _feeds[token];
         if (!c.configured) revert FeedNotConfigured(token);
         if (c.streamAdapter == address(0)) revert StreamNotConfigured(token);
+        // The divergence check anchors on the feed price, and a halted market is exactly the state in
+        // which that anchor cannot be trusted: nothing verifies until the halt clears.
+        Quote memory q = quote(token);
+        if (q.paused || q.stale || q.sequencerGrace) revert MarketHalted(token);
         (uint256 raw,) = IStreamAdapter(c.streamAdapter).verify(token, report);
         price = _scale(raw, c.feedDecimals, c.quoteDecimals);
-        uint256 feedPrice = quote(token).price;
-        uint256 diff = price > feedPrice ? price - feedPrice : feedPrice - price;
-        if (diff * Types.BPS / feedPrice > c.streamDivergenceBps) revert StreamDivergence(feedPrice, price);
+        uint256 diff = price > q.price ? price - q.price : q.price - price;
+        if (diff * Types.BPS / q.price > c.streamDivergenceBps) revert StreamDivergence(q.price, price);
     }
 
     function tokenDecimals(address token) external view override returns (uint8) {

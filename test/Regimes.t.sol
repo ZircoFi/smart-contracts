@@ -7,6 +7,7 @@ import {OracleRouter} from "../src/OracleRouter.sol";
 import {SwapRouter} from "../src/SwapRouter.sol";
 import {AggregatorV3Interface} from "../src/interfaces/IExternal.sol";
 import {Types} from "../src/libraries/Types.sol";
+import {MockStreamAdapter} from "../src/mocks/Mocks.sol";
 
 /// @notice Sessions and halts: spreads widen and clips shrink when the underlying market is closed, and
 ///         every oracle failure mode halts trading instead of mispricing it.
@@ -158,6 +159,43 @@ contract RegimesTest is BaseTest {
             address(nvda),
             address(0xDEAD)
         );
+    }
+
+    function test_streamReportVerifiesOnlyAgainstALiveMid() public {
+        MockStreamAdapter stream = new MockStreamAdapter();
+        vm.prank(gov);
+        oracle.configureFeed(
+            address(nvda),
+            address(usdg),
+            AggregatorV3Interface(address(nvdaFeed)),
+            1 hours,
+            2 hours,
+            4 days,
+            2500,
+            1 hours,
+            200,
+            address(nvda),
+            address(nvda),
+            address(nvda),
+            address(stream)
+        );
+
+        // In tolerance: the report verifies and scales to quote-token units.
+        stream.set(NVDA_PRICE_8);
+        assertEq(oracle.verifyStreamReport(address(nvda), ""), NVDA_MID);
+
+        // A 3% divergence against a 2% tolerance is refused.
+        stream.set(NVDA_PRICE_8 * 103 / 100);
+        vm.expectRevert(abi.encodeWithSelector(OracleRouter.StreamDivergence.selector, NVDA_MID, NVDA_MID * 103 / 100));
+        oracle.verifyStreamReport(address(nvda), "");
+
+        // The divergence check anchors on the feed mid; while the market is halted that anchor is
+        // exactly the number not to trust, so nothing verifies until the halt clears.
+        stream.set(NVDA_PRICE_8);
+        vm.prank(gov);
+        oracle.pause(address(nvda));
+        vm.expectRevert(abi.encodeWithSelector(OracleRouter.MarketHalted.selector, address(nvda)));
+        oracle.verifyStreamReport(address(nvda), "");
     }
 
     function test_multiplierReportedNotDoubleApplied() public view {
