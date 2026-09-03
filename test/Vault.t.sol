@@ -116,6 +116,36 @@ contract VaultTest is BaseTest {
         nvdaVault.deposit(20_000e6, 0, lp2);
     }
 
+    function test_previewsMatchTheRealThing() public {
+        // Seed unevenly and trade once so value per share is no longer 1:1 and rounding has teeth.
+        _seed(nvdaVault, NVDA_MID);
+        _swap(address(usdg), address(nvda), 10_000e6);
+
+        uint256 tokenAmount = 30_000e6 * 1e18 / NVDA_MID;
+        uint256 previewedShares = nvdaVault.previewDeposit(50_000e6, tokenAmount);
+        vm.prank(lp2);
+        uint256 shares = nvdaVault.deposit(50_000e6, tokenAmount, lp2);
+        assertEq(shares, previewedShares);
+
+        (uint256 previewedQuote, uint256 previewedToken) = nvdaVault.previewWithdraw(shares);
+        vm.prank(lp2);
+        (uint256 quoteOut, uint256 tokenOut) = nvdaVault.withdraw(shares, lp2);
+        assertEq(quoteOut, previewedQuote);
+        assertEq(tokenOut, previewedToken);
+    }
+
+    function test_previewWithdrawNeedsNoOracle() public {
+        uint256 shares = _seed(nvdaVault, NVDA_MID);
+        nvda.setOraclePaused(true); // halts pricing and deposit previews...
+        vm.expectRevert(AnchorVault.MarketHalted.selector);
+        nvdaVault.previewDeposit(1_000e6, 0);
+
+        // ...but the exit preview, like the exit, reads no oracle at all.
+        (uint256 quoteOut, uint256 tokenOut) = nvdaVault.previewWithdraw(shares);
+        assertGt(quoteOut, 0);
+        assertGt(tokenOut, 0);
+    }
+
     function test_swapAccruesValuePerShare() public {
         uint256 shares = _seed(nvdaVault, NVDA_MID);
         uint256 valueBefore = nvdaVault.totalValue();

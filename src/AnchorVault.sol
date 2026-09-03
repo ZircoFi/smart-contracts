@@ -143,9 +143,7 @@ contract AnchorVault is ERC20, ReentrancyGuard {
         returns (uint256 quoteOut, uint256 tokenOut)
     {
         if (shares == 0) revert ZeroShares();
-        uint256 supply = totalSupply();
-        quoteOut = quoteToken.balanceOf(address(this)) * shares / supply;
-        tokenOut = token.balanceOf(address(this)) * shares / supply;
+        (quoteOut, tokenOut) = previewWithdraw(shares);
         _burn(msg.sender, shares);
         if (quoteOut != 0) quoteToken.safeTransfer(receiver, quoteOut);
         if (tokenOut != 0) token.safeTransfer(receiver, tokenOut);
@@ -203,6 +201,24 @@ contract AnchorVault is ERC20, ReentrancyGuard {
     // ---------------------------------------------------------------------
     // Views
     // ---------------------------------------------------------------------
+
+    /// @notice Shares a deposit of this mix would mint right now. Reverts while the oracle is unusable,
+    ///         exactly as `deposit` would; the eligibility and cap checks are left to the call itself.
+    function previewDeposit(uint256 quoteAmount, uint256 tokenAmount) external view returns (uint256) {
+        uint256 mid = _liveMid();
+        uint256 value = quoteAmount + tokenAmount * mid / 10 ** tokenDec;
+        uint256 supply = totalSupply();
+        return supply == 0 ? value * shareScale : value * supply / _totalValue(mid);
+    }
+
+    /// @notice The in-kind mix a withdrawal of `shares` would deliver right now. Pure balance arithmetic,
+    ///         like `withdraw` itself: no oracle read, no gate.
+    function previewWithdraw(uint256 shares) public view returns (uint256 quoteOut, uint256 tokenOut) {
+        uint256 supply = totalSupply();
+        if (supply == 0) return (0, 0);
+        quoteOut = quoteToken.balanceOf(address(this)) * shares / supply;
+        tokenOut = token.balanceOf(address(this)) * shares / supply;
+    }
 
     /// @notice Vault value in quote units at the current guarded mid. Reverts while the oracle is unusable.
     function totalValue() external view returns (uint256) {
