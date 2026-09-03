@@ -117,7 +117,7 @@ contract Activity is Script {
         vm.startBroadcast(a.pk);
         if (quoteAmount != 0) c.usdg.approve(address(c.vault), quoteAmount);
         if (tokenAmount != 0) c.stock.approve(address(c.vault), tokenAmount);
-        c.vault.deposit(quoteAmount, tokenAmount, a.addr);
+        c.vault.deposit(quoteAmount, tokenAmount, 0, a.addr);
         vm.stopBroadcast();
         console2.log(a.name, "deposited (quote, token)", quoteAmount, tokenAmount);
     }

@@ -37,7 +37,7 @@ contract Seed is Script {
         // Balanced liquidity: 500,000 USDG per side.
         usdg.approve(address(vault), type(uint256).max);
         stock.approve(address(vault), type(uint256).max);
-        vault.deposit(500_000e6, 500_000e6 * 1e18 / mid, me);
+        vault.deposit(500_000e6, 500_000e6 * 1e18 / mid, 0, me);
 
         // One buy and one sell through the router, so both sides of the book have a fill.
         usdg.approve(address(router), type(uint256).max);

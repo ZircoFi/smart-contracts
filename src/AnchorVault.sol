@@ -68,6 +68,7 @@ contract AnchorVault is ERC20, ReentrancyGuard {
     error NoLiquidity();
     error ZeroAmount();
     error ZeroShares();
+    error Slippage(uint256 shares, uint256 minShares);
     error BandExceeded();
     error ClipExceeded(uint256 notional, uint256 clip);
     error DailyCapExceeded();
@@ -106,8 +107,10 @@ contract AnchorVault is ERC20, ReentrancyGuard {
     // ---------------------------------------------------------------------
 
     /// @notice Deposit the quote asset, the token, or both. The deposit is valued at the guarded mid and
-    ///         mints shares at the current value per share.
-    function deposit(uint256 quoteAmount, uint256 tokenAmount, address receiver)
+    ///         mints shares at the current value per share. `minShares` bounds the mint the way a swap's
+    ///         `minAmountOut` bounds a fill: if the mid moves between signing and inclusion, the deposit
+    ///         reverts rather than mints short.
+    function deposit(uint256 quoteAmount, uint256 tokenAmount, uint256 minShares, address receiver)
         external
         nonReentrant
         returns (uint256 shares)
@@ -127,6 +130,7 @@ contract AnchorVault is ERC20, ReentrancyGuard {
         uint256 supply = totalSupply();
         shares = supply == 0 ? value * shareScale : value * supply / total;
         if (shares == 0) revert ZeroShares();
+        if (shares < minShares) revert Slippage(shares, minShares);
 
         if (quoteAmount != 0) quoteToken.safeTransferFrom(msg.sender, address(this), quoteAmount);
         if (tokenAmount != 0) token.safeTransferFrom(msg.sender, address(this), tokenAmount);

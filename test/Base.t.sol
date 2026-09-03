@@ -192,7 +192,7 @@ abstract contract BaseTest is Test {
     function _seed(AnchorVault vault, uint256 mid) internal returns (uint256 shares) {
         uint256 tokenAmount = 500_000e6 * 1e18 / mid;
         vm.prank(lp1);
-        shares = vault.deposit(500_000e6, tokenAmount, lp1);
+        shares = vault.deposit(500_000e6, tokenAmount, 0, lp1);
     }
 
     function _swap(address tokenIn, address tokenOut, uint256 amountIn) internal returns (uint256) {

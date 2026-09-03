@@ -12,7 +12,7 @@ import {Roles} from "../src/libraries/Types.sol";
 contract VaultTest is BaseTest {
     function test_depositMintsValueBasedShares() public {
         vm.prank(lp1);
-        uint256 shares = nvdaVault.deposit(100_000e6, 0, lp1);
+        uint256 shares = nvdaVault.deposit(100_000e6, 0, 0, lp1);
         // First deposit: shares scale a 6-decimal quote value to 18-decimal shares.
         assertEq(shares, 100_000e6 * 1e12);
         assertEq(nvdaVault.balanceOf(lp1), shares);
@@ -22,7 +22,7 @@ contract VaultTest is BaseTest {
     function test_tokenDepositValuedAtMid() public {
         uint256 tokenAmount = 100_000e6 * 1e18 / NVDA_MID;
         vm.prank(lp1);
-        uint256 shares = nvdaVault.deposit(0, tokenAmount, lp1);
+        uint256 shares = nvdaVault.deposit(0, tokenAmount, 0, lp1);
         uint256 value = tokenAmount * NVDA_MID / 1e18;
         assertEq(shares, value * 1e12);
     }
@@ -32,7 +32,7 @@ contract VaultTest is BaseTest {
         uint256 supplyBefore = nvdaVault.totalSupply();
         uint256 totalBefore = nvdaVault.totalValue();
         vm.prank(lp2);
-        uint256 shares = nvdaVault.deposit(250_000e6, 0, lp2);
+        uint256 shares = nvdaVault.deposit(250_000e6, 0, 0, lp2);
         // Same value per share as the pool: shares/supply == value/total.
         assertApproxEqRel(shares, supplyBefore * 250_000e6 / totalBefore, 1e12);
     }
@@ -57,7 +57,7 @@ contract VaultTest is BaseTest {
         nvdaVault.quoteSwap(true, 1_000e6);
         vm.prank(lp2);
         vm.expectRevert(AnchorVault.MarketHalted.selector);
-        nvdaVault.deposit(1_000e6, 0, lp2);
+        nvdaVault.deposit(1_000e6, 0, 0, lp2);
 
         // The halt stops pricing and nothing else. Withdrawal reads no oracle.
         vm.prank(lp1);
@@ -80,7 +80,7 @@ contract VaultTest is BaseTest {
         usdg.approve(address(nvdaVault), type(uint256).max);
         vm.prank(trader);
         vm.expectRevert(abi.encodeWithSelector(IEligibilityRegistry.NotEligible.selector, trader, Roles.LP));
-        nvdaVault.deposit(1_000e6, 0, trader);
+        nvdaVault.deposit(1_000e6, 0, 0, trader);
     }
 
     function test_shareTransfersGatedToLps() public {
@@ -110,10 +110,28 @@ contract VaultTest is BaseTest {
             IParamController.MarketConfig({tier: 1, dailyVolumeCap: 2_000_000e6, tvlCap: 100_000e6, enabled: true})
         );
         vm.prank(lp1);
-        nvdaVault.deposit(90_000e6, 0, lp1);
+        nvdaVault.deposit(90_000e6, 0, 0, lp1);
         vm.prank(lp2);
         vm.expectRevert(AnchorVault.TvlCapExceeded.selector);
-        nvdaVault.deposit(20_000e6, 0, lp2);
+        nvdaVault.deposit(20_000e6, 0, 0, lp2);
+    }
+
+    function test_depositMinSharesBoundsTheMint() public {
+        _seed(nvdaVault, NVDA_MID);
+        uint256 expected = nvdaVault.previewDeposit(100_000e6, 0);
+
+        // The mid moves against the LP between preview and inclusion: the mint comes up short of the
+        // bound and the deposit reverts instead.
+        nvdaFeed.set(int256(NVDA_PRICE_8 * 101 / 100));
+        uint256 nowExpected = nvdaVault.previewDeposit(100_000e6, 0);
+        assertLt(nowExpected, expected);
+        vm.prank(lp2);
+        vm.expectRevert(abi.encodeWithSelector(AnchorVault.Slippage.selector, nowExpected, expected));
+        nvdaVault.deposit(100_000e6, 0, expected, lp2);
+
+        // At or above the bound the deposit mints normally.
+        vm.prank(lp2);
+        assertEq(nvdaVault.deposit(100_000e6, 0, nowExpected, lp2), nowExpected);
     }
 
     function test_previewsMatchTheRealThing() public {
@@ -124,7 +142,7 @@ contract VaultTest is BaseTest {
         uint256 tokenAmount = 30_000e6 * 1e18 / NVDA_MID;
         uint256 previewedShares = nvdaVault.previewDeposit(50_000e6, tokenAmount);
         vm.prank(lp2);
-        uint256 shares = nvdaVault.deposit(50_000e6, tokenAmount, lp2);
+        uint256 shares = nvdaVault.deposit(50_000e6, tokenAmount, 0, lp2);
         assertEq(shares, previewedShares);
 
         (uint256 previewedQuote, uint256 previewedToken) = nvdaVault.previewWithdraw(shares);
