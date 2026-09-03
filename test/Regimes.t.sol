@@ -70,11 +70,10 @@ contract RegimesTest is BaseTest {
         vm.expectRevert(AnchorVault.MarketHalted.selector);
         router.swapExactIn(_params(address(usdg), address(nvda), 1_000e6, 0));
 
-        // Clearing the pause is a governance action with a published rationale.
+        // Clearing the pause is a governance action with a published rationale. Resume re-baselines
+        // the checkpoint, so trading restarts at the reviewed price without re-tripping the cap.
         vm.prank(gov);
         oracle.resume(address(nvda));
-        vm.warp(block.timestamp + 2 hours); // leave the move-cap window, then refresh the feed
-        nvdaFeed.set(int256(NVDA_PRICE_8 * 130 / 100));
         assertGt(_swap(address(usdg), address(nvda), 1_000e6), 0);
     }
 

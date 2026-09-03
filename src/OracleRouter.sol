@@ -150,9 +150,11 @@ contract OracleRouter is IOracleRouter {
         emit ScheduleSet(s.regularOpen, s.regularClose, s.extendedOpen, s.extendedClose);
     }
 
-    /// @notice Resume a market that was paused by the move cap or manually.
+    /// @notice Resume a market that was paused by the move cap or manually. Clears the checkpoint too:
+    ///         governance reviewed the print it is resuming into, and comparing the next fill against the
+    ///         pre-pause price would re-trip the cap on the very gap that was just approved.
     function resume(address token) external onlyGovernance {
-        _checkpoints[token].paused = false;
+        delete _checkpoints[token];
         emit MarketResumed(token);
     }
 
