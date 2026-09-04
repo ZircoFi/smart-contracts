@@ -139,6 +139,9 @@ contract RfqSettlement is EIP712 {
     ///         reachable through the L1 delayed inbox against a censoring sequencer.
     function cancel(uint256[] calldata nonces) external {
         for (uint256 i = 0; i < nonces.length; i++) {
+            // Skip nonces already consumed or cancelled, so the event stream records only real state
+            // changes and never a "cancellation" of a quote that had already settled.
+            if (nonceUsed[msg.sender][nonces[i]]) continue;
             nonceUsed[msg.sender][nonces[i]] = true;
             emit NonceCancelled(msg.sender, nonces[i]);
         }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
+import {Vm} from "forge-std/Vm.sol";
 import {BaseTest} from "./Base.t.sol";
 import {RfqSettlement} from "../src/RfqSettlement.sol";
 import {SwapRouter} from "../src/SwapRouter.sol";
@@ -152,6 +153,23 @@ contract RfqTest is BaseTest {
         vm.prank(trader);
         vm.expectRevert(RfqSettlement.WrongTaker.selector);
         router.swapExactIn(p);
+    }
+
+    function test_cancelRecordsOnlyRealStateChanges() public {
+        uint256[] memory nonces = new uint256[](2);
+        nonces[0] = 77;
+        nonces[1] = 77; // duplicate inside the batch
+
+        vm.recordLogs();
+        vm.prank(maker);
+        rfq.cancel(nonces);
+        vm.prank(maker);
+        rfq.cancel(nonces); // and the whole batch again
+
+        // Four requests, one real change: exactly one NonceCancelled hits the audit trail.
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertEq(logs.length, 1);
+        assertTrue(rfq.nonceUsed(maker, 77));
     }
 
     function test_bandCutsBothWays() public {
