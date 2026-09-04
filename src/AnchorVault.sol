@@ -230,6 +230,15 @@ contract AnchorVault is ERC20, ReentrancyGuard {
         return _totalValue(_liveMid());
     }
 
+    /// @notice Quote-token notional still fillable today before the market's daily cap binds. Pricing
+    ///         enforces the cap, so this is the headroom to size an order against rather than probing
+    ///         with quotes until one reverts.
+    function remainingDailyCap() external view returns (uint256) {
+        uint256 cap = params.marketConfig(address(token)).dailyVolumeCap;
+        uint256 used = dailyVolume[block.timestamp / 1 days];
+        return used >= cap ? 0 : cap - used;
+    }
+
     /// @notice The token side's share of vault value in bps. 5_000 is on target.
     function inventoryRatioBps() external view returns (uint256) {
         uint256 mid = _liveMid();
