@@ -156,6 +156,10 @@ contract SwapTest is BaseTest {
         vm.expectRevert(SwapRouter.SwapsPaused.selector);
         router.swapExactIn(_params(address(usdg), address(nvda), 1_000e6, 0));
 
+        // Pricing goes dark with the pause, so a preview never shows a quote nobody can hit.
+        vm.expectRevert(AnchorVault.SwapsPaused.selector);
+        nvdaVault.quoteSwap(true, 1_000e6);
+
         // Unpausing is not the guardian's to do: a compromised guardian key must not be able to lift
         // a pause mid-incident. The owner clears it.
         vm.prank(guardian);

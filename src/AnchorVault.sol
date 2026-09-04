@@ -65,6 +65,7 @@ contract AnchorVault is ERC20, ReentrancyGuard {
     error NotRouter();
     error MarketNotListed();
     error MarketHalted();
+    error SwapsPaused();
     error NoLiquidity();
     error ZeroAmount();
     error ZeroShares();
@@ -250,6 +251,9 @@ contract AnchorVault is ERC20, ReentrancyGuard {
         returns (SwapQuote memory s)
     {
         if (amountIn == 0) revert ZeroAmount();
+        // The router refuses fills during the emergency pause; pricing refuses too, so a preview never
+        // shows a quote nobody can hit, and the vault stays closed even to a router that forgot to ask.
+        if (params.swapsPaused()) revert SwapsPaused();
         if (q.paused || q.stale || q.sequencerGrace) revert MarketHalted();
 
         IParamController.MarketConfig memory mkt = params.marketConfig(address(token));
