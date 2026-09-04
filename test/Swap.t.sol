@@ -3,6 +3,7 @@ pragma solidity 0.8.26;
 
 import {BaseTest} from "./Base.t.sol";
 import {AnchorVault} from "../src/AnchorVault.sol";
+import {ParamController} from "../src/ParamController.sol";
 import {SwapRouter} from "../src/SwapRouter.sol";
 import {IParamController} from "../src/interfaces/IParamController.sol";
 import {IEligibilityRegistry} from "../src/interfaces/IEligibilityRegistry.sol";
@@ -155,7 +156,12 @@ contract SwapTest is BaseTest {
         vm.expectRevert(SwapRouter.SwapsPaused.selector);
         router.swapExactIn(_params(address(usdg), address(nvda), 1_000e6, 0));
 
+        // Unpausing is not the guardian's to do: a compromised guardian key must not be able to lift
+        // a pause mid-incident. The owner clears it.
         vm.prank(guardian);
+        vm.expectRevert(ParamController.NotOwner.selector);
+        params.setPaused(false);
+        vm.prank(gov);
         params.setPaused(false);
         assertGt(_swap(address(usdg), address(nvda), 1_000e6), 0);
     }

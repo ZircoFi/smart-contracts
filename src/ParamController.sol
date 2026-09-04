@@ -183,10 +183,14 @@ contract ParamController is IParamController {
 
     // ---------------------------------------------------------------------
     // Emergency pause: swaps only. Deposits, withdrawals and RFQ cancellation are never pausable.
+    // The guardian can only engage the pause; clearing it is an owner action.
     // ---------------------------------------------------------------------
 
     function setPaused(bool swaps) external {
         if (msg.sender != guardian && msg.sender != owner && msg.sender != address(this)) revert NotGuardian();
+        // The guardian's power is one-way: it can stop trading instantly but never restart it, so a
+        // compromised guardian key cannot lift a pause in the middle of an incident.
+        if (!swaps && msg.sender == guardian) revert NotOwner();
         swapsPaused = swaps;
         emit EmergencyPause(swaps, msg.sender);
     }
